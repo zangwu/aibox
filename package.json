@@ -1,0 +1,41 @@
+{
+  "name": "aibox",
+  "productName": "AI Box",
+  "version": "0.2.0",
+  "description": "本地 AI 工具管理盒子：聚合中转站预设，一键写入 Codex / Claude Code / Gemini CLI 配置",
+  "private": true,
+  "license": "MIT",
+  "main": "electron-dist/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k -n vite,electron \"vite --port 5173 --strictPort\" \"electron .\"",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "node scripts/build-main.mjs",
+    "dist": "npm run build && electron-builder --config electron-builder.config.cjs",
+    "release:gitee": "node scripts/push-release.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.8"
+  }
+}

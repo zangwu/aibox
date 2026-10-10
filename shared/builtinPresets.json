@@ -1,0 +1,57 @@
+[
+  {
+    "id": "openrouter",
+    "name": "OpenRouter",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "protocol": "openai-chat",
+    "model": "openai/gpt-4o-mini",
+    "supports": ["codex", "gemini"],
+    "note": "OpenAI 兼容端点，Codex 将以 wire_api=chat 写入",
+    "website": "https://openrouter.ai",
+    "riskHint": "⚠️ 第三方服务，与本软件无关；请自行评估服务商可信度、合规性与隐私风险。"
+  },
+  {
+    "id": "deepseek",
+    "name": "DeepSeek 官方",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "protocol": "openai-chat",
+    "model": "deepseek-chat",
+    "supports": ["codex", "gemini"],
+    "note": "OpenAI 兼容端点，Codex 将以 wire_api=chat 写入",
+    "website": "https://platform.deepseek.com",
+    "riskHint": "⚠️ 第三方服务，与本软件无关；请自行评估服务商可信度、合规性与隐私风险。"
+  },
+  {
+    "id": "moonshot-anthropic",
+    "name": "Moonshot Kimi（Anthropic 兼容）",
+    "baseUrl": "https://api.moonshot.ai/anthropic",
+    "protocol": "anthropic",
+    "model": "kimi-k2-0711-preview",
+    "supports": ["claude-code"],
+    "note": "Anthropic Messages 兼容端点，供 Claude Code 使用",
+    "website": "https://platform.moonshot.ai",
+    "riskHint": "⚠️ 第三方服务，与本软件无关；请自行评估服务商可信度、合规性与隐私风险。"
+  },
+  {
+    "id": "zhipu-anthropic",
+    "name": "智谱 GLM（Anthropic 兼容）",
+    "baseUrl": "https://open.bigmodel.cn/api/anthropic",
+    "protocol": "anthropic",
+    "model": "glm-4.6",
+    "supports": ["claude-code"],
+    "note": "Anthropic Messages 兼容端点，供 Claude Code 使用",
+    "website": "https://open.bigmodel.cn",
+    "riskHint": "⚠️ 第三方服务，与本软件无关；请自行评估服务商可信度、合规性与隐私风险。"
+  },
+  {
+    "id": "google-aistudio",
+    "name": "Google AI Studio",
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+    "protocol": "google",
+    "model": "gemini-2.0-flash",
+    "supports": ["gemini"],
+    "note": "Google 官方端点，需 GEMINI_API_KEY",
+    "website": "https://aistudio.google.com",
+    "riskHint": "⚠️ 请确认你所在地区可合法访问该服务。"
+  }
+]

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+electron-dist/
+release/
+shots/
+*.log
+.aibox-backup
+boot-probe.log
+.env
+.env.local
