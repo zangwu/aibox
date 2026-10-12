@@ -18,6 +18,36 @@
 
 ---
 
+
+---
+
+## 界面一览
+
+### 工具面板
+
+一键检测 / 启动 / 卸载 AI 客户端，桌面版与 CLI 双形态，卡片可收藏；热度显示公开调用量。
+
+![工具面板](docs/images/1-dashboard.png)
+
+### 预设市场
+
+管理中转站预设、连通性测试、收藏备注；**分享码不含 API Key**。
+
+![预设市场](docs/images/2-presets.png)
+
+### 研发工作流
+
+需求 / 任务按 **阶段 × 功能模块** 看板；评论迭代、门禁（G1–G5）；可打开目录、发给 DeepSeek Harness。
+
+![研发工作流](docs/images/3-workflow.png)
+
+### 设置
+
+版本热更新、便携 Node、环境变量广播、运行日志。
+
+![设置](docs/images/4-settings.png)
+
+
 ## 安装
 
 ### Windows（推荐）
