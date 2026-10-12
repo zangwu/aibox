@@ -9,7 +9,7 @@ module.exports = {
   publish: [
     {
       provider: 'generic',
-      url: process.env.AIBOX_UPDATE_URL || 'https://github.com/YOUR_GITHUB_USER/aibox/releases/download/latest',
+      url: process.env.AIBOX_UPDATE_URL || 'https://github.com/zangwu/aibox/releases/download/latest',
     },
   ],
   win: {
