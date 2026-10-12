@@ -1,6 +1,6 @@
 # AI Box
 
-本地 **AI 客户端管理盒子**：聚合中转站预设、一键写入 Codex / Claude / DeepSeek 配置，内置研发工作流（简化禅道）并可对接 DeepSeek Harness。
+本地 **AI 客户端管理盒子**：聚合中转站预设、一键写入 Codex / Claude / DeepSeek 配置，内置研发工作流并可对接 DeepSeek Harness。
 
 > 单机运行 · 配置只写本机 · 预设分享码 **不含 API Key**
 
