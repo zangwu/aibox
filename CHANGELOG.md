@@ -3,6 +3,15 @@
 本文件记录 AI Box 的重要变更。  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.2.2] - 2026-10-12
+
+### Added
+- CHANGELOG、正式 Release Notes；GitHub `latest` 热更新通道
+- README 功能截图；CONTRIBUTING 分支模型
+
+### Verified
+- 安装版 0.2.1 可拉到 `latest.yml` 并提示「发现新版本 0.2.2」
+
 ## [Unreleased]
 
 ### Added
@@ -36,6 +45,7 @@
 - 工具检测、预设写入、安装启动、Agent 会话、浏览器页签
 - 基础自动化更新（electron-updater）
 
+[0.2.2]: https://github.com/zangwu/aibox/releases/tag/latest
 [Unreleased]: https://github.com/zangwu/aibox/compare/v0.2.1...HEAD
 [0.2.1]: https://github.com/zangwu/aibox/releases/tag/v0.2.1
 [0.2.0]: https://github.com/zangwu/aibox/releases/tag/v0.2.0
