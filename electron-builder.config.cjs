@@ -9,7 +9,7 @@ module.exports = {
   publish: [
     {
       provider: 'generic',
-      url: process.env.GITEE_PUBLISH_URL || 'https://gitee.com/YOUR_GITEE_USERNAME/aibox/releases/download/latest',
+      url: process.env.AIBOX_UPDATE_URL || 'https://github.com/YOUR_GITHUB_USER/aibox/releases/download/latest',
     },
   ],
   win: {

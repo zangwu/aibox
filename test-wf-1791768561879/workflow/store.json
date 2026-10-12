@@ -1,0 +1,49 @@
+{
+  "projects": [
+    {
+      "id": "PRJ-1",
+      "name": "x",
+      "version": "0.1.0",
+      "modules": [
+        {
+          "id": "m",
+          "title": "M"
+        }
+      ],
+      "createdAt": 1791768561879,
+      "updatedAt": 1791768561879,
+      "settings": {
+        "acceptDev": false,
+        "acceptTest": true,
+        "requireHumanFinalAccept": true,
+        "maxAutoIterations": 8,
+        "budgetMinutes": 60,
+        "lockWorkspace": true
+      }
+    }
+  ],
+  "items": [
+    {
+      "id": "WF-1",
+      "projectId": "PRJ-1",
+      "type": "feature",
+      "title": "t",
+      "body": "",
+      "phase": "discovery",
+      "module": "m",
+      "status": "open",
+      "assignee": "unassigned",
+      "priority": "P2",
+      "risk": "low",
+      "acceptance": [],
+      "dependsOn": [],
+      "ready": true,
+      "comments": [],
+      "gates": {},
+      "createdAt": 1791768561880,
+      "updatedAt": 1791768561880
+    }
+  ],
+  "baselines": [],
+  "locks": {}
+}

@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as path from 'node:path';
 import type { InstallProgress, ToolId } from '../../shared/types';
-import { TOOL_META } from './tools';
+import { findTool } from '../../shared/toolCatalog';
 import { appendLog, dataDir, loadConfig, saveConfig } from '../store';
 
 const execFileP = promisify(execFile);
@@ -129,7 +129,8 @@ export async function installCli(
   tool: ToolId,
   onProgress: (p: InstallProgress) => void,
 ): Promise<{ ok: boolean; message: string }> {
-  const meta = TOOL_META[tool];
+  const meta = findTool(tool);
+  if (!meta?.npmPackage) return { ok: false, message: '该工具没有可用的 npm 包' };
   const npm = await pickNpm(tool, onProgress);
   if ('error' in npm) {
     onProgress({ tool, stage: 'error', message: npm.error });
@@ -141,7 +142,7 @@ export async function installCli(
   appendLog(`npm install -g ${meta.npmPackage} (via ${npm.via})`);
 
   return new Promise((resolve) => {
-    const child = spawn(npm.npm, args, {
+    const child = spawn('cmd.exe', ['/d', '/s', '/c', npm.npm, ...args], {
       windowsHide: true,
       env: { ...process.env, NO_COLOR: '1' },
     });
@@ -164,7 +165,7 @@ export async function installCli(
       }
       onProgress({ tool, stage: 'verify', message: '校验安装结果 …' });
       try {
-        await execFileP('where.exe', [meta.cliCmd], { windowsHide: true, timeout: 10_000 });
+        await execFileP('where.exe', [meta.cmd ?? ''], { windowsHide: true, timeout: 10_000 });
         onProgress({ tool, stage: 'done', message: `${meta.name} 安装完成` });
         appendLog(`installed ${meta.npmPackage}`);
         resolve({ ok: true, message: `${meta.name} CLI 安装完成` });
@@ -174,4 +175,92 @@ export async function installCli(
       }
     });
   });
+}
+
+/** 从本机卸载工具（npm 全局包优先；桌面版引导系统卸载） */
+/** 从本机卸载工具（先杀进程再 npm 卸载，避免文件占用失败） */
+export async function uninstallCli(tool: string): Promise<{ ok: boolean; message: string }> {
+  appendLog('uninstallCli enter ' + tool);
+  const meta = findTool(tool);
+  if (!meta) return { ok: false, message: '未知工具' };
+
+  const notes: string[] = [];
+  let removed = false;
+
+  // 先杀残留进程，否则 Windows 上 npm 可能因文件占用卸载失败
+  const images = new Set<string>([...(meta.desktop?.processNames ?? [])]);
+  if (meta.cmd) {
+    images.add(meta.cmd + '.exe');
+    images.add(meta.cmd + '.cmd');
+    images.add(meta.cmd + '-windows-sandbox-service.exe');
+  }
+  if (tool === 'codex') {
+    for (const x of ['ChatGPT.exe', 'codex.exe', 'Codex.exe', 'codex-windows-sandbox-service.exe']) {
+      images.add(x);
+    }
+  }
+  for (const img of images) {
+    await execFileP('taskkill.exe', ['/F', '/T', '/IM', img], { windowsHide: true }).catch(() => {});
+  }
+  // 兜底：按名字模糊结束（含 sandbox-service 等）
+  // 模糊进程名兜底（仅 taskkill，避免 PowerShell Stop-Process 误杀）
+  const blur = (meta.cmd ?? tool).replace(/[^a-z0-9_-]/gi, '');
+  if (blur) {
+    await execFileP('taskkill.exe', ['/F', '/T', '/IM', blur + '.exe'], { windowsHide: true }).catch(() => {});
+    await execFileP('taskkill.exe', ['/F', '/T', '/IM', blur + '-windows-sandbox-service.exe'], { windowsHide: true }).catch(() => {});
+  }
+  await new Promise((r) => setTimeout(r, 1200));
+
+  if (meta.npmPackage) {
+    const npm = await pickNpm(tool as ToolId, () => {});
+    if (!('error' in npm)) {
+      const args = ['uninstall', '-g', '--no-audit', '--no-fund', meta.npmPackage];
+      appendLog('npm uninstall -g ' + meta.npmPackage);
+      // Windows 上 spawn(.cmd) 可能 EINVAL；卸载用 execFile 更稳
+      // Windows 对 npm.cmd 直接 spawn/execFile 可能 EINVAL，统一走 cmd /c
+      const code = await execFileP('cmd.exe', ['/d', '/s', '/c', npm.npm, ...args], {
+        windowsHide: true,
+        timeout: 120_000,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+        .then(() => 0)
+        .catch((e: unknown) => {
+          appendLog('uninstall exec error: ' + (e instanceof Error ? e.message : String(e)));
+          return 1;
+        });
+      const still = await execFileP('where.exe', [meta.cmd ?? meta.npmPackage], { windowsHide: true, timeout: 8_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (code === 0 && !still) {
+        removed = true;
+        notes.push('已卸载 npm 包 ' + meta.npmPackage);
+      } else if (code === 0 && still) {
+        notes.push('npm 报告卸载成功，但 ' + meta.cmd + ' 仍在 PATH');
+      } else {
+        notes.push('npm 卸载 ' + meta.npmPackage + ' 失败（退出码 ' + code + '）');
+      }
+    } else {
+      notes.push('未找到可用 npm，无法卸载 ' + meta.npmPackage);
+    }
+  }
+
+  if (meta.desktop) {
+    try {
+      await execFileP('powershell.exe', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        'Start-Process appwiz.cpl',
+      ], { windowsHide: true, timeout: 10_000 });
+      notes.push('桌面端「' + meta.desktop.name + '」请在系统卸载程序中移除');
+    } catch {
+      notes.push('请手动卸载桌面端「' + meta.desktop.name + '」');
+    }
+  }
+
+  if (removed || notes.length) {
+    appendLog('uninstall ' + tool + ': ' + notes.join('; '));
+    return { ok: removed, message: notes.join('；') || '已处理' };
+  }
+  return { ok: false, message: '该工具没有可卸载的 npm 包' };
 }

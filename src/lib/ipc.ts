@@ -15,4 +15,16 @@ export function aibox(): AiboxApi {
 }
 
 export type { Preset, ToolId, ToolInfo, ApplyReport, ApplyReportItem, Subscription, InstallProgress, UpdaterStatus } from '../../shared/types';
+export type {
+  WorkItem,
+  WorkItemStatus,
+  WorkItemPhase,
+  WorkItemType,
+  CommentKind,
+  WorkflowProject,
+  WorkflowModule,
+  GateId,
+  RequirementBaseline,
+} from '../../shared/workflowTypes';
 export { encodeShareCode } from '../../shared/presetSchema';
+export type { ToolCardInfo } from '../../electron/ipc/tools';

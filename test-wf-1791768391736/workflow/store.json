@@ -1,0 +1,65 @@
+{
+  "projects": [
+    {
+      "id": "PRJ-1",
+      "name": "x",
+      "version": "0.1.0",
+      "modules": [
+        {
+          "id": "m",
+          "title": "M"
+        }
+      ],
+      "createdAt": 1791768391736,
+      "updatedAt": 1791768391736,
+      "settings": {
+        "acceptDev": false,
+        "acceptTest": true,
+        "requireHumanFinalAccept": true,
+        "maxAutoIterations": 8,
+        "budgetMinutes": 60,
+        "lockWorkspace": true
+      }
+    }
+  ],
+  "items": [
+    {
+      "id": "WF-1",
+      "projectId": "PRJ-1",
+      "type": "feature",
+      "title": "t",
+      "body": "",
+      "phase": "discovery",
+      "module": "m",
+      "status": "open",
+      "assignee": "human",
+      "priority": "P1",
+      "risk": "low",
+      "acceptance": [],
+      "dependsOn": [],
+      "ready": true,
+      "comments": [],
+      "gates": {
+        "G1": {
+          "by": "human",
+          "ok": true,
+          "at": 1791768391739
+        }
+      },
+      "createdAt": 1791768391737,
+      "updatedAt": 1791768391739
+    }
+  ],
+  "baselines": [
+    {
+      "id": "DOC-1",
+      "projectId": "PRJ-1",
+      "title": "PRD",
+      "version": 1,
+      "bodyMd": "# 需求",
+      "confirmedAt": 1791768391740,
+      "hash": "6453e240"
+    }
+  ],
+  "locks": {}
+}

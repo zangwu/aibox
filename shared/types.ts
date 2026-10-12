@@ -112,6 +112,8 @@ export interface BoxConfig {
   presets: Preset[];
   /** 内置预设 id → 本地字段覆盖 */
   presetOverrides: Record<string, PresetLocalOverrides>;
+  /** 工具卡片收藏（与预设收藏同交互） */
+  toolFavorites?: Record<string, boolean>;
   subscriptions: Subscription[];
   lastApply: Partial<Record<ToolId, ApplyReport>>;
   portableNode?: { version: string; path: string; downloadedAt: number };
@@ -144,7 +146,7 @@ export interface UpdaterStatus {
 
 /** preload 暴露给渲染进程的 API（window.aibox） */
 export interface AiboxApi {
-  detectTools(): Promise<ToolInfo[]>;
+  detectTools(force?: boolean): Promise<ToolInfo[]>;
   listPresets(): Promise<Preset[]>;
   savePreset(preset: Preset): Promise<Preset[]>;
   removePreset(id: string): Promise<Preset[]>;
@@ -161,6 +163,8 @@ export interface AiboxApi {
   removeSubscription(id: string): Promise<Preset[]>;
   applyPreset(presetId: string, tools: ToolId[], apiKey: string): Promise<ApplyReport>;
   installCli(tool: ToolId): Promise<{ ok: boolean; message: string }>;
+  /** 从本机卸载工具（npm 包 / 引导卸载桌面端） */
+  uninstallCli(tool: string): Promise<{ ok: boolean; message: string }>;
   onInstallProgress(cb: (p: InstallProgress) => void): () => void;
   launch(tool: ToolId, kind: 'cli' | 'desktop'): Promise<{ ok: boolean; message: string }>;
   /** 关闭并重启工具（配置写入后一键生效） */
@@ -170,13 +174,62 @@ export interface AiboxApi {
   getPortableNodeStatus(): Promise<{ installed: boolean; version?: string; path?: string }>;
   setupPortableNode(): Promise<{ ok: boolean; message: string }>;
   getLogs(): Promise<string[]>;
-  getAppInfo(): Promise<{ version: string; isPackaged: boolean }>;
+  getAppInfo(): Promise<{ version: string; isPackaged: boolean; homeDir: string }>;
   checkUpdates(): Promise<{ ok: boolean; message: string }>;
   installUpdate(): Promise<{ ok: boolean; message: string }>;
   onUpdaterStatus(cb: (s: UpdaterStatus) => void): () => void;
+  /** 切换工具收藏（与预设收藏同交互），返回最新收藏表 */
+  toggleToolFavorite(id: string): Promise<Record<string, boolean>>;
+  /** 刷新热度（公开调用量原始数字），返回抓取统计 */
+  refreshHeat(): Promise<{ ok: number; fail: number }>;  /** 内嵌 CLI 会话（agent 面板），cwd 为工作区目录（空 = 用户主目录）；hasHistory=true 时续接多轮上下文 */
+  agentStart(tool: string, prompt: string, cwd?: string, hasHistory?: boolean): Promise<{ ok: boolean; message: string }>;
+  agentStop(tool: string): Promise<{ ok: boolean; message: string }>;
+  /** CLI 会话历史本地存档 */
+  loadChats(tool: string): Promise<Array<{ role: 'user' | 'agent'; text: string }>>;
+  saveChats(tool: string, turns: Array<{ role: 'user' | 'agent'; text: string }>): Promise<void>;
+  /** 弹出系统目录选择对话框 */
+  pickDirectory(): Promise<{ ok: boolean; path: string; message: string }>;
+  onAgentOutput(cb: (e: { tool: string; stream: 'out' | 'err'; chunk: string }) => void): () => void;
+  onAgentEnd(cb: (e: { tool: string; code: number; error?: string }) => void): () => void;
   getMeta(): Promise<{
     lastApply: Partial<Record<ToolId, ApplyReport>>;
     subscriptions: Subscription[];
     portableNode: { installed: boolean; version?: string; path?: string };
+    heat?: Record<string, { stars?: number; downloads?: number; vscodeInstalls?: number; volume: number; score: number; at: number }>;
   }>;
+  /* ===== 研发工作流 M1 ===== */
+  workflowListProjects(): Promise<import('./workflowTypes').WorkflowProject[]>;
+  workflowCreateProject(input: { name: string; repoPath?: string; harnessWorkspace?: string }): Promise<import('./workflowTypes').WorkflowProject>;
+  workflowUpdateProject(id: string, patch: Partial<import('./workflowTypes').WorkflowProject>): Promise<import('./workflowTypes').WorkflowProject | null>;
+  workflowUpsertModule(projectId: string, mod: { id?: string; title: string; color?: string }): Promise<import('./workflowTypes').WorkflowProject | null>;
+  workflowListItems(projectId?: string): Promise<import('./workflowTypes').WorkItem[]>;
+  workflowGetItem(id: string): Promise<import('./workflowTypes').WorkItem | undefined>;
+  workflowCreateItem(input: {
+    projectId: string;
+    type: import('./workflowTypes').WorkItemType;
+    title: string;
+    body?: string;
+    phase?: import('./workflowTypes').WorkItemPhase;
+    module: string;
+    priority?: import('./workflowTypes').WorkItemPriority;
+    assignee?: import('./workflowTypes').WorkItemAssignee;
+    acceptance?: import('./workflowTypes').WorkItem['acceptance'];
+    dependsOn?: string[];
+  }): Promise<import('./workflowTypes').WorkItem>;
+  workflowTransition(id: string, to: import('./workflowTypes').WorkItemStatus, phase?: import('./workflowTypes').WorkItemPhase): Promise<import('./workflowTypes').WorkItem>;
+  workflowAddComment(id: string, body: string, kind?: import('./workflowTypes').CommentKind, author?: 'human' | 'ai'): Promise<import('./workflowTypes').WorkItem>;
+  workflowSetGate(id: string, gate: import('./workflowTypes').GateId, ok: boolean, note?: string): Promise<import('./workflowTypes').WorkItem>;
+  workflowConfirmBaseline(projectId: string, title: string, bodyMd: string): Promise<import('./workflowTypes').RequirementBaseline>;
+  workflowListBaselines(projectId: string): Promise<import('./workflowTypes').RequirementBaseline[]>;
+  workflowAcquireLock(projectId: string, itemId: string): Promise<boolean>;
+  workflowReleaseLock(projectId: string, itemId: string): Promise<void>;
+  workflowGetLock(projectId: string): Promise<string | 'idle'>;
+  /** 写 DeepSeek Harness 任务简报到 repo/.dsh-inbox */
+  workflowWriteBrief(repoPath: string, itemId: string): Promise<string>;
+  /** 启动 DeepSeek Harness 桌面端并打开工作区 */
+  workflowLaunchHarness(workspacePath: string): Promise<{ ok: boolean; message: string }>;
+  /** 一键：生成简报→剪贴板→打开 Harness→（条件满足）自动粘贴发送 */
+  workflowSendHarness(itemId: string): Promise<{ ok: boolean; message: string; autoSent?: boolean; promptPath?: string }>;
+  workflowOpenFolder(folder: string): Promise<{ ok: boolean; message: string }>;
+  workflowHarnessHeadless(itemId: string): Promise<{ ok: boolean; message: string }>;
 }

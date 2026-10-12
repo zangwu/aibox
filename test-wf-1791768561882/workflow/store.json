@@ -1,0 +1,72 @@
+{
+  "projects": [
+    {
+      "id": "PRJ-1",
+      "name": "x",
+      "version": "0.1.0",
+      "modules": [
+        {
+          "id": "m",
+          "title": "M"
+        }
+      ],
+      "createdAt": 1791768561882,
+      "updatedAt": 1791768561882,
+      "settings": {
+        "acceptDev": false,
+        "acceptTest": true,
+        "requireHumanFinalAccept": true,
+        "maxAutoIterations": 8,
+        "budgetMinutes": 60,
+        "lockWorkspace": true
+      }
+    }
+  ],
+  "items": [
+    {
+      "id": "WF-1",
+      "projectId": "PRJ-1",
+      "type": "feature",
+      "title": "t",
+      "body": "",
+      "phase": "done",
+      "module": "m",
+      "status": "done",
+      "assignee": "ai-dev",
+      "priority": "P1",
+      "risk": "low",
+      "acceptance": [],
+      "dependsOn": [],
+      "ready": true,
+      "comments": [
+        {
+          "author": "human",
+          "body": "不通过",
+          "kind": "reject",
+          "id": "C-1",
+          "createdAt": 1791768561885
+        },
+        {
+          "author": "human",
+          "body": "过",
+          "kind": "accept",
+          "id": "C-2",
+          "createdAt": 1791768561888
+        }
+      ],
+      "gates": {
+        "G5": {
+          "by": "human",
+          "ok": true,
+          "at": 1791768561888,
+          "note": "accept 评论"
+        }
+      },
+      "createdAt": 1791768561883,
+      "updatedAt": 1791768561888,
+      "closedAt": 1791768561888
+    }
+  ],
+  "baselines": [],
+  "locks": {}
+}

@@ -24,7 +24,7 @@ const LOG_PATH = () => path.join(dataDir(), 'logs.txt');
 let cache: BoxConfig | null = null;
 
 export function defaultConfig(): BoxConfig {
-  return { schemaVersion: 1, presets: [], presetOverrides: {}, subscriptions: [], lastApply: {} };
+  return { schemaVersion: 1, presets: [], presetOverrides: {}, toolFavorites: {}, subscriptions: [], lastApply: {} };
 }
 
 export function loadConfig(): BoxConfig {
@@ -83,6 +83,19 @@ export function clearPresetOverride(id: string): Preset[] {
   return allPresets();
 }
 
+/** 工具卡片收藏（与预设收藏同交互） */
+export function toggleToolFavorite(cardKey: string): Record<string, boolean> {
+  const cfg = loadConfig();
+  cfg.toolFavorites = cfg.toolFavorites ?? {};
+  cfg.toolFavorites[cardKey] = !cfg.toolFavorites[cardKey];
+  saveConfig(cfg);
+  return { ...cfg.toolFavorites };
+}
+
+export function getToolFavorites(): Record<string, boolean> {
+  return loadConfig().toolFavorites ?? {};
+}
+
 export function upsertPreset(preset: Preset): Preset[] {
   const cfg = loadConfig();
   const idx = cfg.presets.findIndex((p) => p.id === preset.id);
@@ -119,6 +132,49 @@ export function readLogs(maxLines = 300): string[] {
     return lines.slice(-maxLines);
   } catch {
     return [];
+  }
+}
+
+/* ------------------------------ CLI 会话存档 ------------------------------ */
+
+const CHATS_PATH = () => path.join(dataDir(), 'chats.json');
+const AGENT_TURN_CAP = 50_000; // 单个 agent 输出最大保留字符数
+const AGENT_TURNS_KEPT = 100;
+
+export interface AgentTurn {
+  role: 'user' | 'agent';
+  text: string;
+}
+
+export function loadChats(tool: string): AgentTurn[] {
+  try {
+    if (!fs.existsSync(CHATS_PATH())) return [];
+    const all = JSON.parse(fs.readFileSync(CHATS_PATH(), 'utf8')) as Record<string, AgentTurn[]>;
+    return Array.isArray(all[tool]) ? all[tool] : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveChats(tool: string, turns: AgentTurn[]): void {
+  try {
+    fs.mkdirSync(dataDir(), { recursive: true });
+    let all: Record<string, AgentTurn[]> = {};
+    try {
+      if (fs.existsSync(CHATS_PATH())) all = JSON.parse(fs.readFileSync(CHATS_PATH(), 'utf8'));
+    } catch {
+      /* 损坏则重建 */
+    }
+    const trimmed = turns.slice(-AGENT_TURNS_KEPT).map((t) => ({
+      ...t,
+      text: t.text.length > AGENT_TURN_CAP ? t.text.slice(0, AGENT_TURN_CAP) + '\n…(已截断)' : t.text,
+    }));
+    all[tool] = trimmed;
+    const tmp = `${CHATS_PATH()}.tmp-${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify(all), 'utf8');
+    fs.renameSync(tmp, CHATS_PATH());
+  } catch {
+    /* 存档失败不影响会话 */
   }
 }
 

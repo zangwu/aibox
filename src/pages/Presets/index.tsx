@@ -7,6 +7,7 @@ import {
   Heart,
   KeyRound,
   Link2,
+  Pencil,
   Plus,
   Search,
   Trash2,
@@ -41,7 +42,13 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
   { id: 'gemini', label: 'Gemini' },
 ];
 
-export default function Presets({ onShowTutorial }: { onShowTutorial: () => void }) {
+export default function Presets({
+  onShowTutorial,
+  onOpenBrowser,
+}: {
+  onShowTutorial: () => void;
+  onOpenBrowser: (url: string, label: string) => void;
+}) {
   const [presets, setPresets] = useState<Preset[]>([]);
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [msg, setMsg] = useState<string>('');
@@ -50,6 +57,7 @@ export default function Presets({ onShowTutorial }: { onShowTutorial: () => void
   const [shareOpen, setShareOpen] = useState(false);
   const [shareCode, setShareCode] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [subUrl, setSubUrl] = useState('');
   const [draft, setDraft] = useState<Preset>(emptyDraft());
 
@@ -99,8 +107,7 @@ export default function Presets({ onShowTutorial }: { onShowTutorial: () => void
       setMsg('该预设没有填写官网地址');
       return;
     }
-    const r = await aibox().openExternal(p.website);
-    if (!r.ok) setMsg(r.message);
+    onOpenBrowser(p.website, p.name); // 盒内浏览器打开；右上角「外部」可跳系统浏览器
   };
 
   const copyShare = async (p: Preset) => {
@@ -124,15 +131,28 @@ export default function Presets({ onShowTutorial }: { onShowTutorial: () => void
     }
   };
 
+  const openCreate = () => {
+    setEditingId(null);
+    setDraft(emptyDraft());
+    setCreateOpen(true);
+  };
+
+  const openEdit = (p: Preset) => {
+    setEditingId(p.id);
+    setDraft({ ...p });
+    setCreateOpen(true);
+  };
+
   const submitDraft = async () => {
     const err = validateDraft(draft);
     if (err) {
       setMsg(err);
       return;
     }
-    // 填了 key：保存前自动做连通性测试，通过才随预设保存
-    let finalDraft = { ...draft };
-    if (draft.savedKey) {
+    const finalId = editingId ?? draft.id;
+    let finalDraft = { ...draft, id: finalId };
+    const prevKey = presets.find((x) => x.id === finalId)?.savedKey;
+    if (draft.savedKey && draft.savedKey !== prevKey) {
       setMsg('正在测试 key 连通性…');
       const r = await aibox().testPresetKey(draft, draft.savedKey);
       if (r.ok) {
@@ -145,6 +165,7 @@ export default function Presets({ onShowTutorial }: { onShowTutorial: () => void
     }
     setPresets(await aibox().savePreset(finalDraft));
     setCreateOpen(false);
+    setEditingId(null);
     setDraft(emptyDraft());
   };
 
@@ -170,7 +191,7 @@ export default function Presets({ onShowTutorial }: { onShowTutorial: () => void
             导入分享码
           </button>
           <button
-            onClick={() => setCreateOpen(true)}
+            onClick={() => openCreate()}
             className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
           >
             <Plus size={12} /> 新建预设
@@ -210,7 +231,7 @@ export default function Presets({ onShowTutorial }: { onShowTutorial: () => void
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
         {filtered.map((p) => (
           <div key={p.id} className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm">
             <div className="flex items-start justify-between gap-2">
@@ -282,9 +303,16 @@ export default function Presets({ onShowTutorial }: { onShowTutorial: () => void
               />
               <div className="ml-auto flex items-center gap-1">
                 <button
+                  onClick={() => openEdit(p)}
+                  title="编辑预设配置"
+                  className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+                >
+                  <Pencil size={11} />
+                </button>
+                <button
                   onClick={() => void goWebsite(p)}
                   disabled={!p.website}
-                  title={p.website ? `前往 ${p.website} 购买/获取 key` : '未填写官网'}
+                  title={p.website ? `在盒子内置浏览器打开 ${p.website}（购买/续费 key）` : '未填写官网'}
                   className="flex items-center gap-0.5 rounded bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-blue-500 disabled:opacity-40"
                 >
                   <ExternalLink size={9} /> 前往
@@ -387,11 +415,16 @@ export default function Presets({ onShowTutorial }: { onShowTutorial: () => void
         </button>
       </Modal>
 
-      {/* 新建预设 */}
-      <Modal title="新建预设" open={createOpen} onClose={() => setCreateOpen(false)}>
+      {/* 新建 / 编辑预设 */}
+      <Modal title={editingId ? '编辑预设' : '新建预设'} open={createOpen} onClose={() => setCreateOpen(false)}>
         <div className="space-y-3">
           <Field label="ID（小写字母/数字/-/_）">
-            <input value={draft.id} onChange={(e) => setDraft({ ...draft, id: e.target.value })} className={inputCls} />
+            <input
+              value={draft.id}
+              disabled={Boolean(editingId)}
+              onChange={(e) => setDraft({ ...draft, id: e.target.value })}
+              className={`${inputCls} disabled:opacity-60`}
+            />
           </Field>
           <Field label="名称">
             <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className={inputCls} />

@@ -1,0 +1,49 @@
+{
+  "projects": [
+    {
+      "id": "PRJ-1",
+      "name": "x",
+      "version": "0.1.0",
+      "modules": [
+        {
+          "id": "m",
+          "title": "M"
+        }
+      ],
+      "createdAt": 1791768391746,
+      "updatedAt": 1791768391746,
+      "settings": {
+        "acceptDev": false,
+        "acceptTest": true,
+        "requireHumanFinalAccept": true,
+        "maxAutoIterations": 8,
+        "budgetMinutes": 60,
+        "lockWorkspace": true
+      }
+    }
+  ],
+  "items": [
+    {
+      "id": "WF-1",
+      "projectId": "PRJ-1",
+      "type": "suggestion",
+      "title": "建议",
+      "body": "",
+      "phase": "discovery",
+      "module": "m",
+      "status": "draft",
+      "assignee": "unassigned",
+      "priority": "P3",
+      "risk": "low",
+      "acceptance": [],
+      "dependsOn": [],
+      "ready": false,
+      "comments": [],
+      "gates": {},
+      "createdAt": 1791768391747,
+      "updatedAt": 1791768391747
+    }
+  ],
+  "baselines": [],
+  "locks": {}
+}

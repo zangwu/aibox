@@ -4,21 +4,28 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { shell } from 'electron';
 import type { ToolId } from '../../shared/types';
-import { TOOL_META, detectTools } from './tools';
+import { findTool } from '../../shared/toolCatalog';
+import { detectCatalog } from './tools';
+import { loadHeat } from './heat';
 import { appendLog } from '../store';
 
 const execFileP = promisify(execFile);
 
-function localAppData(...segs: string[]): string {
-  const base = process.env.LOCALAPPDATA;
-  return base ? path.join(base, ...segs) : '';
+function expand(p: string): string {
+  return p
+    .replace(/%APPDATA%/gi, process.env.APPDATA ?? '')
+    .replace(/%LOCALAPPDATA%/gi, process.env.LOCALAPPDATA ?? '')
+    .replace(/%USERPROFILE%/gi, process.env.USERPROFILE ?? '')
+    .replace(/%ProgramFiles%/gi, process.env['ProgramFiles'] ?? '');
 }
 
 /** CLI 已装则解析其命令路径 */
 async function which(cmd: string): Promise<string | undefined> {
   try {
     const { stdout } = await execFileP('where.exe', [cmd], { windowsHide: true, timeout: 8_000 });
-    return stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
+    const hits = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const rank = (p: string) => (/\.exe$/i.test(p) ? 0 : /\.cmd$/i.test(p) ? 1 : /\.bat$/i.test(p) ? 2 : 3);
+    return [...hits].sort((a, b) => rank(a) - rank(b))[0];
   } catch {
     return undefined;
   }
@@ -29,106 +36,134 @@ async function wtAvailable(): Promise<boolean> {
 }
 
 /** 启动 CLI：优先 Windows Terminal 新开窗口，兜底 PowerShell Start-Process 新开 cmd 窗口 */
-export async function launchCli(tool: ToolId): Promise<{ ok: boolean; message: string }> {
-  const cmd = TOOL_META[tool].cliCmd;
+
+/** 安全拉起：.cmd/.bat 经 cmd /c，避免 Windows spawn EINVAL */
+function spawnSafe(file: string, args: string[] = [], opts: { cwd?: string } = {}): void {
+  const wrapped = /\.(cmd|bat)$/i.test(file);
+  const exe = wrapped ? 'cmd.exe' : file;
+  const argv = wrapped ? ['/d', '/s', '/c', file, ...args] : args;
+  execFile(exe, argv, { windowsHide: false, cwd: opts.cwd }, (err) => {
+    if (err) appendLog('launch spawn failed: ' + file + ' ' + err.message);
+  });
+}
+
+export async function launchCli(tool: string): Promise<{ ok: boolean; message: string }> {
+  const cmd = findTool(tool)?.cmd ?? tool;
   if (!(await which(cmd))) {
-    return { ok: false, message: `未检测到 ${cmd} 命令，请先在盒子中安装` };
+    return { ok: false, message: '未检测到 ' + cmd + ' 命令，请先在盒子中安装' };
   }
   try {
     if (await wtAvailable()) {
-      execFile('wt.exe', ['new-tab', 'cmd', '/k', cmd], { windowsHide: false }, (err) => {
-        if (err) appendLog(`wt launch failed: ${err.message}`);
-      });
+      spawnSafe('wt.exe', ['new-tab', 'cmd', '/k', cmd]);
     } else {
-      // 注意：不要自己拼引号，Start-Process 内部处理参数转义
-      const ps = `Start-Process cmd -ArgumentList '/k','${cmd}'`;
-      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true }, (err) => {
-        if (err) appendLog(`start-process launch failed: ${err.message}`);
-      });
+      const ps = "Start-Process cmd -ArgumentList '/k','" + cmd + "'";
+      spawnSafe('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps]);
     }
-    appendLog(`launch cli: ${cmd}`);
-    return { ok: true, message: `已在终端中启动 ${TOOL_META[tool].name}` };
+    appendLog('launch cli: ' + cmd);
+    return { ok: true, message: '已在终端中启动 ' + (findTool(tool)?.name ?? tool) };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    appendLog(`launch cli failed: ${cmd} ${msg}`);
-    return { ok: false, message: `启动失败：${msg}` };
+    appendLog('launch cli failed: ' + cmd + ' ' + msg);
+    return { ok: false, message: '启动失败：' + msg };
   }
 }
 
-/** 启动桌面版 */
-export async function launchDesktop(tool: ToolId): Promise<{ ok: boolean; message: string }> {
-  if (tool === 'codex') {
-    // 微软商店版：explorer shell:AppsFolder\<PFN>!App
+/** 启动桌面版：目录元数据驱动（商店包 / 本地 exe / VS Code 扩展） */
+export async function launchDesktop(tool: string): Promise<{ ok: boolean; message: string }> {
+  const def = findTool(tool);
+  const d = def?.desktop;
+  if (!d) return { ok: false, message: '该工具无桌面版' };
+
+  // 微软商店包
+  if (d.appxName) {
     try {
       const { stdout } = await execFileP(
         'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-Command', '(Get-AppxPackage -Name *codex* | Select-Object -First 1).PackageFamilyName'],
+        ['-NoProfile', '-NonInteractive', '-Command', `(Get-AppxPackage -Name ${d.appxName} | Select-Object -First 1).PackageFamilyName`],
         { windowsHide: true, timeout: 20_000 },
       );
       const pfn = stdout.trim();
-      if (!pfn) return openStorePage('codex');
-      execFile('explorer.exe', [`shell:AppsFolder\\${pfn}!App`], { windowsHide: false });
-      appendLog(`launch codex desktop: ${pfn}`);
-      return { ok: true, message: '已启动 Codex 桌面版' };
+      if (pfn) {
+        spawnSafe('explorer.exe', ['shell:AppsFolder\\' + pfn + '!App']);
+        appendLog(`launch ${tool} desktop store: ${pfn}`);
+        return { ok: true, message: `已启动 ${d.name}` };
+      }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      appendLog(`launch codex desktop failed: ${msg}`);
-      return openStorePage('codex');
+      appendLog(`launch ${tool} desktop store failed: ${e instanceof Error ? e.message : e}`);
     }
   }
-  if (tool === 'claude-code') {
-    const candidates = [
-      localAppData('AnthropicClaude', 'claude.exe'),
-      path.join(process.env.ProgramFiles ?? '', 'Claude', 'claude.exe'),
-    ].filter(Boolean);
-    const hit = candidates.find((p) => fs.existsSync(p));
-    if (hit) {
-      execFile(hit, [], { windowsHide: false, cwd: path.dirname(hit) });
-      appendLog(`launch claude desktop: ${hit}`);
-      return { ok: true, message: '已启动 Claude Desktop' };
+
+  // 本地 exe 候选
+  if (d.pathCandidates) {
+    for (const raw of d.pathCandidates) {
+      const p = expand(raw);
+      if (!p.includes('*') && fs.existsSync(p)) {
+        spawnSafe(p, [], { cwd: path.dirname(p) });
+        appendLog(`launch ${tool} desktop: ${p}`);
+        return { ok: true, message: `已启动 ${d.name}` };
+      }
     }
-    return openStorePage('claude-code');
   }
-  return { ok: false, message: 'Gemini CLI 无桌面版' };
+
+  // VS Code 扩展：拉起 VS Code（装了扩展即可用）
+  if (d.channel === 'vscode') {
+    const vs = await which('code');
+    if (vs) {
+      spawnSafe(vs);
+      appendLog(`launch ${tool} desktop via vscode: ${vs}`);
+      return { ok: true, message: `已启动 VS Code（${d.name}）` };
+    }
+  }
+
+  return openStorePage(tool);
 }
 
 /** 重启工具：结束相关进程后重新拉起（桌面版优先，未装桌面版则开新终端跑 CLI） */
-const KILL_MAP: Record<ToolId, string[]> = {
-  codex: ['ChatGPT.exe', 'codex.exe', 'Codex.exe'],
-  'claude-code': ['claude.exe', 'Claude.exe', 'Claude Code.exe'],
-  gemini: ['gemini.exe', 'Gemini.exe'],
-};
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function restartTool(tool: ToolId): Promise<{ ok: boolean; message: string }> {
-  for (const img of KILL_MAP[tool]) {
+export async function restartTool(tool: string): Promise<{ ok: boolean; message: string }> {
+  const def = findTool(tool);
+  const images = new Set<string>([...(def?.desktop?.processNames ?? [])]);
+  if (def?.cmd) {
+    images.add(def.cmd + '.exe');
+    images.add(def.cmd + '.cmd');
+  }
+  // 兼容旧硬编码
+  if (tool === 'codex') ['ChatGPT.exe', 'codex.exe', 'Codex.exe'].forEach((x) => images.add(x));
+  if (tool === 'claude-code') ['claude.exe', 'Claude.exe', 'Claude Code.exe'].forEach((x) => images.add(x));
+
+  for (const img of images) {
     await execFileP('taskkill.exe', ['/F', '/T', '/IM', img], { windowsHide: true }).catch(() => {});
   }
   await sleep(2000);
   try {
-    const tools = await detectTools();
+    const tools = await detectCatalog(loadHeat());
     const info = tools.find((t) => t.id === tool);
-    if (info?.desktop.installed) {
+    if (info?.desktop?.installed) {
       const r = await launchDesktop(tool);
       appendLog(`restart ${tool} (desktop): ${r.message}`);
-      return { ok: r.ok, message: r.ok ? `已重启 ${TOOL_META[tool].name} 桌面版` : r.message };
+      return { ok: r.ok, message: r.ok ? `已重启 ${findTool(tool)?.name ?? tool} 桌面版` : r.message };
     }
     const r = await launchCli(tool);
     appendLog(`restart ${tool} (cli): ${r.message}`);
-    return { ok: r.ok, message: r.ok ? `已重启 ${TOOL_META[tool].name} CLI` : r.message };
+    return { ok: r.ok, message: r.ok ? `已重启 ${findTool(tool)?.name ?? tool} CLI` : r.message };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, message: `重启失败：${msg}` };
   }
 }
 
-/** 未装 GUI 时拉起商店页 / 下载页 */export async function openStorePage(tool: ToolId): Promise<{ ok: boolean; message: string }> {
+/** 未装 GUI 时拉起商店页 / 下载页 */
+export async function openStorePage(tool: string): Promise<{ ok: boolean; message: string }> {
+  const d = findTool(tool)?.desktop;
   const url =
-    tool === 'codex'
-      ? // 商店搜索页（产品 id 随商店上架变化，搜索最稳）
-        'ms-windows-store://search?query=OpenAI%20Codex'
-      : 'https://claude.ai/download';
+    d?.storeUrl ??
+    (tool === 'codex'
+      ? 'ms-windows-store://search?query=OpenAI%20Codex'
+      : tool === 'claude-code'
+        ? 'https://claude.ai/download'
+        : findTool(tool)?.website ?? '');
+  if (!url) return { ok: false, message: '未配置下载页' };
   try {
     await shell.openExternal(url);
     appendLog(`open store page: ${tool} -> ${url}`);
@@ -148,7 +183,7 @@ export async function broadcastEnvChange(): Promise<{ ok: boolean; message: stri
 Add-Type -Namespace Aibox -Name Native -MemberDefinition @"
 using System;
 using System.Runtime.InteropServices;
-public static class Native {
+public class Native {
   [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
   public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 }

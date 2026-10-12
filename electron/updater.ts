@@ -69,7 +69,7 @@ export function setupAutoUpdater(getWindow: () => Electron.WebContents | null): 
     return { ok: true, message: '' };
   });
 
-  ipcMain.handle('app:info', () => ({ version: app.getVersion(), isPackaged: app.isPackaged }));
+  ipcMain.handle('app:info', () => ({ version: app.getVersion(), isPackaged: app.isPackaged, homeDir: app.getPath('home') }));
 
   // 启动 10s 后检查；之后每 4 小时
   if (app.isPackaged) {

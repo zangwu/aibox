@@ -1,13 +1,17 @@
-import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, Menu, Tray, ipcMain, nativeImage, shell } from 'electron';
 import * as path from 'node:path';
 import type { Preset, ToolId } from '../shared/types';
 import { applyPresetToTools } from './ipc/configWriter';
-import { getPortableNodeStatus, installCli, setupPortableNode } from './ipc/installer';
+import { getPortableNodeStatus, installCli, setupPortableNode, uninstallCli } from './ipc/installer';
 import { broadcastEnvChange, launchCli, launchDesktop, openStorePage, restartTool } from './ipc/launcher';
 import { testPresetKey } from './ipc/tester';
+import { agentStart, agentStop } from './ipc/agentRunner';
 import * as presets from './ipc/presets';
-import { detectTools } from './ipc/tools';
-import { allPresets, appendLog, loadConfig, readLogs, saveConfig } from './store';
+import { detectCatalog, invalidateDetectCache } from './ipc/tools';
+import { loadHeat, refreshHeat } from './ipc/heat';
+import { TOOL_CATALOG } from '../shared/toolCatalog';
+import { allPresets, appendLog, getToolFavorites, loadChats, loadConfig, readLogs, saveChats, saveConfig, toggleToolFavorite } from './store';
+import * as wf from './ipc/workflow';
 import { setupAutoUpdater } from './updater';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173';
@@ -58,6 +62,7 @@ function createWindow(): void {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      webviewTag: true, // 内置浏览器页签
     },
   });
 
@@ -130,7 +135,109 @@ function createTray(): void {
 /* ------------------------------ IPC ------------------------------ */
 
 function registerIpc(): void {
-  ipcMain.handle('tools:detect', () => detectTools());
+  ipcMain.handle('tools:detect', (_e, force?: boolean) => {
+    if (force) invalidateDetectCache();
+    return detectCatalog(loadHeat(), { force: Boolean(force) });
+  });
+  ipcMain.handle('tools:toggleFavorite', (_e, id: string) => toggleToolFavorite(id));
+  ipcMain.handle('workflow:listProjects', () => wf.listProjects());
+  ipcMain.handle('workflow:createProject', (_e, input: { name: string; repoPath?: string; harnessWorkspace?: string }) =>
+    wf.createProject(input),
+  );
+  ipcMain.handle('workflow:updateProject', (_e, id: string, patch: Record<string, unknown>) => wf.updateProject(id, patch));
+  ipcMain.handle('workflow:upsertModule', (_e, projectId: string, mod: { id?: string; title: string; color?: string }) =>
+    wf.upsertModule(projectId, mod),
+  );
+  ipcMain.handle('workflow:listItems', (_e, projectId?: string) => wf.listItems(projectId));
+  ipcMain.handle('workflow:getItem', (_e, id: string) => wf.getItem(id));
+  ipcMain.handle('workflow:createItem', (_e, input: Parameters<typeof wf.createItem>[0]) => wf.createItem(input));
+  ipcMain.handle('workflow:transition', (_e, id: string, to: string, phase?: string) =>
+    wf.transition(id, to as never, { phase: phase as never }),
+  );
+  ipcMain.handle('workflow:addComment', (_e, id: string, body: string, kind?: string, author?: 'human' | 'ai') =>
+    wf.addComment(id, { author: author ?? 'human', body, kind: (kind ?? 'note') as never }),
+  );
+  ipcMain.handle('workflow:setGate', (_e, id: string, gate: string, ok: boolean, note?: string) =>
+    wf.setGate(id, gate as never, { by: 'human', ok, note }),
+  );
+  ipcMain.handle('workflow:confirmBaseline', (_e, projectId: string, title: string, bodyMd: string) =>
+    wf.confirmBaseline({ projectId, title, bodyMd }),
+  );
+  ipcMain.handle('workflow:listBaselines', (_e, projectId: string) => wf.listBaselines(projectId));
+  ipcMain.handle('workflow:acquireLock', (_e, projectId: string, itemId: string) => wf.acquireLock(projectId, itemId));
+  ipcMain.handle('workflow:releaseLock', (_e, projectId: string, itemId: string) => wf.releaseLock(projectId, itemId));
+  ipcMain.handle('workflow:getLock', (_e, projectId: string) => wf.getLock(projectId));
+  ipcMain.handle('workflow:writeBrief', (_e, repoPath: string, itemId: string) => {
+    const item = wf.getItem(itemId);
+    if (!item) throw new Error('工作项不存在');
+    return wf.writeBrief(repoPath, item);
+  });
+  ipcMain.handle('workflow:launchHarness', async (_e, workspacePath: string) => {
+    const fs = await import('node:fs');
+    const { execFile } = await import('node:child_process');
+    const candidates = [
+      `${process.env.LOCALAPPDATA ?? ''}\\Programs\\DeepSeek Harness\\DeepSeek Harness.exe`,
+      `D:\\Users\\admin\\AppData\\Local\\Programs\\DeepSeek Harness\\DeepSeek Harness.exe`,
+    ];
+    const exe = candidates.find((p) => fs.existsSync(p));
+    if (!exe) return { ok: false, message: '未找到 DeepSeek Harness 安装路径' };
+    try {
+      execFile(exe, [], { windowsHide: false, cwd: workspacePath || undefined }, () => {});
+      appendLog('launch harness: ' + exe);
+      return { ok: true, message: '已启动 DeepSeek Harness 桌面端' };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+  });
+  ipcMain.handle('workflow:openFolder', async (_e, folder: string) => {
+    if (!folder) return { ok: false, message: '路径为空' };
+    const err = await shell.openPath(folder);
+    return err ? { ok: false, message: err } : { ok: true, message: '已打开 ' + folder };
+  });
+  ipcMain.handle('workflow:harnessHeadless', async (_e, item: string) => {
+    const { harnessHeadless } = await import('./ipc/harnessSend');
+    return harnessHeadless(item);
+  });
+  ipcMain.handle('workflow:sendHarness', async (_e, itemId: string) => {
+    const { sendToHarness } = await import('./ipc/harnessSend');
+    const item = wf.getItem(itemId);
+    if (!item) throw new Error('工作项不存在');
+    const projects = wf.listProjects();
+    const proj = projects.find((p) => p.id === item.projectId);
+    const workspace = proj?.harnessWorkspace || proj?.repoPath || '';
+    return sendToHarness({
+      item,
+      workspace,
+      clipboard: (text) => {
+        clipboard.writeText(text);
+      },
+      launch: async (ws) => {
+        const fs = await import('node:fs');
+        const { execFile, exec } = await import('node:child_process');
+        // 不强制重启：已有实例则直接 CDP 发送
+        const candidates = [
+          `${process.env.LOCALAPPDATA ?? ''}\\Programs\\DeepSeek Harness\\DeepSeek Harness.exe`,
+          `D:\\Users\\admin\\AppData\\Local\\Programs\\DeepSeek Harness\\DeepSeek Harness.exe`,
+        ];
+        const exe = candidates.find((p) => fs.existsSync(p));
+        if (!exe) return { ok: false, message: '未找到 DeepSeek Harness' };
+        execFile(
+          exe,
+          ['--remote-debugging-port=9333', '--remote-allow-origins=*'],
+          { windowsHide: false, cwd: ws || undefined },
+          () => {},
+        );
+        appendLog('send-to-harness launch: ' + exe + ' cwd=' + ws);
+        return { ok: true, message: '已启动' };
+      },
+      tryAutoPaste: true,
+    });
+  });
+  ipcMain.handle('heat:refresh', async () => {
+    const r = await refreshHeat(TOOL_CATALOG);
+    appendLog(`heat refreshed ok=${r.ok} fail=${r.fail}`);
+    return { ...r, presets: allPresets() };
+  });
 
   ipcMain.handle('presets:list', () => allPresets());
   ipcMain.handle('presets:save', (_e, preset: Preset) => presets.saveUserPreset(preset));
@@ -169,6 +276,7 @@ function registerIpc(): void {
   ipcMain.handle('installer:installCli', (e, tool: ToolId) =>
     installCli(tool, (p) => e.sender.send('installer:progress', p)),
   );
+  ipcMain.handle('installer:uninstallCli', (_e, tool: string) => uninstallCli(tool));
   ipcMain.handle('installer:portableStatus', () => getPortableNodeStatus());
   ipcMain.handle('installer:setupPortableNode', (e) =>
     setupPortableNode((p) => e.sender.send('installer:progress', { tool: 'codex', ...p })),
@@ -198,6 +306,22 @@ function registerIpc(): void {
   ipcMain.handle('launcher:openStorePage', (_e, tool: ToolId) => openStorePage(tool));
 
   ipcMain.handle('env:broadcast', () => broadcastEnvChange());
+  ipcMain.handle('dialog:pickDirectory', async () => {
+    const win = mainWindow;
+    if (!win) return { ok: false, path: '', message: '窗口不可用' };
+    const r = await dialog.showOpenDialog(win, {
+      title: '选择工作区目录',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (r.canceled || r.filePaths.length === 0) return { ok: false, path: '', message: '' };
+    return { ok: true, path: r.filePaths[0], message: '' };
+  });
+  ipcMain.handle('agent:start', (e, tool: ToolId, prompt: string, cwd: string, hasHistory: boolean) =>
+    agentStart(tool, prompt, cwd, hasHistory, (ch, payload) => e.sender.send(ch, payload)),
+  );
+  ipcMain.handle('agent:stop', (_e, tool: ToolId) => agentStop(tool));
+  ipcMain.handle('chats:load', (_e, tool: string) => loadChats(tool));
+  ipcMain.handle('chats:save', (_e, tool: string, turns: unknown) => saveChats(tool, turns as never));
   ipcMain.handle('logs:get', () => readLogs());
   ipcMain.handle('meta:get', () => {
     const cfg = loadConfig();
@@ -205,6 +329,7 @@ function registerIpc(): void {
       lastApply: cfg.lastApply,
       subscriptions: cfg.subscriptions,
       portableNode: getPortableNodeStatus(),
+      heat: loadHeat(),
     };
   });
 }
