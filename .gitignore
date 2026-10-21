@@ -32,3 +32,6 @@ _nonstd/
 
 test-wf-*/
 .playwright-cli/
+
+.workbuddy/
+deliverables/

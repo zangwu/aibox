@@ -140,7 +140,8 @@ export default function Dashboard({
   useEffect(() => {
     void refresh();
     const off = aibox().onInstallProgress((p) => {
-      setInstalling((prev) => ({ ...prev, [p.tool]: p }));
+      // 安装进度只挂 CLI 卡，避免桌面卡跟着动
+      setInstalling((prev) => ({ ...prev, [`${p.tool}-cli`]: p }));
       if (p.stage === 'done' || p.stage === 'error') void refresh(true);
     });
     return off;
@@ -353,7 +354,8 @@ export default function Dashboard({
           const cardKey = `${t.id}-${c.kind}`;
 
           const light = t.managed ? configLight(t.id) : { s: 'idle' as const, text: '配置经环境变量生效' };
-          const prog = installing[t.id];
+          // 桌面/CLI 进度互不影响；installCli 只影响 CLI 卡
+          const prog = isDesktop ? undefined : installing[`${t.id}-cli`];
           const busy =
             Boolean(prog && prog.stage !== 'done' && prog.stage !== 'error') || Boolean(switching[cardKey]);
           const options = t.managed ? toolPresets(t.id) : [];

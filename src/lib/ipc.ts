@@ -20,6 +20,8 @@ export type {
   WorkItemStatus,
   WorkItemPhase,
   WorkItemType,
+  WorkItemPriority,
+  WorkItemAssignee,
   CommentKind,
   WorkflowProject,
   WorkflowModule,

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { DownloadCloud, RefreshCw } from 'lucide-react';
 import { BookOpen, Box, Globe, LayoutDashboard, Settings, Store, Terminal, X, Workflow } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Presets from './pages/Presets';
@@ -8,6 +9,8 @@ import WorkflowPage from './pages/Workflow';
 import AgentPanel from './pages/Agent';
 import BrowserPanel from './pages/Browser';
 import { findTool } from '../shared/toolCatalog';
+import { aibox } from './lib/ipc';
+import type { UpdaterStatus } from './lib/ipc';
 
 type Page = 'dashboard' | 'presets' | 'workflow' | 'tutorial' | 'settings';
 
@@ -29,6 +32,23 @@ export default function App() {
   const [page, setPage] = useState<Page>('dashboard');
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [update, setUpdate] = useState<UpdaterStatus>({ state: 'idle', version: '-' });
+  const [updateBusy, setUpdateBusy] = useState(false);
+
+  useEffect(() => {
+    const off = aibox().onUpdaterStatus(setUpdate);
+    void aibox().checkUpdates().catch(() => {});
+    return off;
+  }, []);
+
+  const installNow = async () => {
+    setUpdateBusy(true);
+    try {
+      await aibox().installUpdate();
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
 
   const openAgent = (tool: string) => {
     const id = `agent:${tool}`;
@@ -129,10 +149,33 @@ export default function App() {
             </>
           )}
         </nav>
-        <div className="px-5 py-4 text-[10px] leading-relaxed text-slate-400">
-          配置仅写入本机
-          <br />
-          无后端 · 无账号 · 无代理
+        <div className="px-4 py-3">
+          {update.state === 'downloaded' || update.state === 'available' ? (
+            <button
+              onClick={() => void installNow()}
+              disabled={updateBusy}
+              className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-2 py-2 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            >
+              <DownloadCloud size={13} />
+              {updateBusy ? '安装中…' : `更新到 v${update.latestVersion ?? ''}`}
+            </button>
+          ) : update.state === 'downloading' ? (
+            <div className="mb-2 rounded-lg bg-slate-100 px-2 py-2 text-[10px] text-slate-600">
+              下载中 {update.percent ?? 0}%
+            </div>
+          ) : update.state === 'checking' ? (
+            <div className="mb-2 flex items-center gap-1 text-[10px] text-slate-500">
+              <RefreshCw size={11} className="animate-spin" /> 检查更新…
+            </div>
+          ) : null}
+          <div className="text-[10px] leading-relaxed text-slate-400">
+            配置仅写入本机
+            <br />
+            无后端 · 无账号 · 无代理
+            {update.latestVersion ? (
+              <span className="mt-1 block text-emerald-600">有新版本 v{update.latestVersion}</span>
+            ) : null}
+          </div>
         </div>
       </aside>
       <main className="min-w-0 flex-1 overflow-hidden">

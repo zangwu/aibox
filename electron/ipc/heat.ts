@@ -142,7 +142,7 @@ export function loadHeat(): HeatMap {
 export function saveHeat(heat: HeatMap): void {
   const cfg = loadConfig() as unknown as Record<string, unknown>;
   cfg.heat = heat;
-  saveConfig(cfg as never);
+  saveConfig(cfg as unknown as Parameters<typeof saveConfig>[0]);
 }
 
 /** VS Code Marketplace 安装量 */

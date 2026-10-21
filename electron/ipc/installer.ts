@@ -179,10 +179,15 @@ export async function installCli(
 
 /** 从本机卸载工具（npm 全局包优先；桌面版引导系统卸载） */
 /** 从本机卸载工具（先杀进程再 npm 卸载，避免文件占用失败） */
-export async function uninstallCli(tool: string): Promise<{ ok: boolean; message: string }> {
-  appendLog('uninstallCli enter ' + tool);
+export async function uninstallCli(
+  tool: string,
+  scope: 'cli' | 'desktop' | 'all' = 'all',
+): Promise<{ ok: boolean; message: string }> {
+  appendLog('uninstallCli enter ' + tool + ' scope=' + scope);
   const meta = findTool(tool);
   if (!meta) return { ok: false, message: '未知工具' };
+  const doCli = scope !== 'desktop';
+  const doDesktop = scope !== 'cli';
 
   const notes: string[] = [];
   let removed = false;
@@ -211,7 +216,7 @@ export async function uninstallCli(tool: string): Promise<{ ok: boolean; message
   }
   await new Promise((r) => setTimeout(r, 1200));
 
-  if (meta.npmPackage) {
+  if (doCli && meta.npmPackage) {
     const npm = await pickNpm(tool as ToolId, () => {});
     if (!('error' in npm)) {
       const args = ['uninstall', '-g', '--no-audit', '--no-fund', meta.npmPackage];
@@ -244,7 +249,7 @@ export async function uninstallCli(tool: string): Promise<{ ok: boolean; message
     }
   }
 
-  if (meta.desktop) {
+  if (doDesktop && meta.desktop) {
     try {
       await execFileP('powershell.exe', [
         '-NoProfile',

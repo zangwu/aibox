@@ -1,7 +1,7 @@
 {
   "name": "aibox",
   "productName": "AI Box",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "本地 AI 工具管理盒子：聚合中转站预设，一键写入 Codex / Claude Code / Gemini CLI 配置",
   "private": true,
   "license": "MIT",

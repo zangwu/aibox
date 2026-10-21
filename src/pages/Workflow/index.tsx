@@ -76,6 +76,19 @@ export default function WorkflowPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+
+  // 模块列表 = 项目配置 + 工作项里出现过的 module（避免配置缺失导致空白）
+  const moduleList = useMemo(() => {
+    const base = project?.modules ?? [];
+    const seen = new Map(base.map((m) => [m.id, m]));
+    for (const it of items) {
+      if (!seen.has(it.module)) {
+        seen.set(it.module, { id: it.module, title: it.module });
+      }
+    }
+    return seen.size ? [...seen.values()] : [{ id: '默认', title: '默认' }];
+  }, [project, items]);
+
   const byModule = useMemo(() => {
     const map = new Map<string, WorkItem[]>();
     for (const it of items) {
@@ -125,12 +138,12 @@ export default function WorkflowPage() {
     }
     await aibox().workflowCreateItem({
       projectId: pid,
-      type: draft.type as never,
+      type: draft.type as import('../../lib/ipc').WorkItemType,
       title: draft.title,
       body: draft.body,
       module: draft.module.trim(),
-      priority: draft.priority as never,
-      phase: draft.phase as never,
+      priority: draft.priority as import('../../lib/ipc').WorkItemPriority,
+      phase: draft.phase as import('../../lib/ipc').WorkItemPhase,
     });
     setCreateOpen(false);
     setDraft({ type: 'feature', title: '', body: '', module: '', priority: 'P2', phase: 'discovery' });
@@ -139,7 +152,7 @@ export default function WorkflowPage() {
 
   const doTransition = async (id: string, to: WorkItemStatus) => {
     try {
-      await aibox().workflowTransition(id, to as never);
+      await aibox().workflowTransition(id, to as import('../../lib/ipc').WorkItemStatus);
       await refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
@@ -240,7 +253,7 @@ export default function WorkflowPage() {
       </div>
 
       <div className="space-y-3">
-        {(project?.modules ?? [{ id: '默认', title: '默认' }]).map((mod) => {
+        {moduleList.map((mod) => {
           const rows = byModule.get(mod.id) ?? [];
           return (
             <div key={mod.id} className="rounded-xl border border-slate-200 bg-white p-3">
